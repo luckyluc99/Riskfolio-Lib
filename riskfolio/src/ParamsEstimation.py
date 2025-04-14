@@ -1070,6 +1070,9 @@ def black_litterman(
     method_cov="hist",
     dict_mu={},
     dict_cov={},
+    method_tau="He",
+    method_omega="He",
+    view_confidences=None,
 ):
     r"""
     Estimate the expected returns vector and covariance matrix based
@@ -1129,7 +1132,7 @@ def black_litterman(
     method_mu : str, optional
         The method used to estimate the expected returns.
         The default value is 'hist'.
-
+        Possible values are:
         - 'hist': use historical estimates.
         - 'ewma1': use ewma with adjust=True. For more information see `EWM <https://pandas.pydata.org/pandas-docs/stable/user_guide/window.html#exponentially-weighted-window>`__.
         - 'ewma2': use ewma with adjust=False. For more information see `EWM <https://pandas.pydata.org/pandas-docs/stable/user_guide/window.html#exponentially-weighted-window>`__.
@@ -1157,6 +1160,25 @@ def black_litterman(
         Other variables related to the mean vector estimation method.
     dict_cov : dict
         Other variables related to the covariance estimation method.
+    method_tau : str, optional
+        The method used to estimate the tau parameter. The default is 'BL'.
+        Possible values are:
+        - 'He': use the Black Litterman method. (1/n_samples)
+        - 'Watlers': use the Watlers method. (1/(n_samples - n_views))
+        - 'Idzorek': use the Idzorek method. (0.05) (shouldn't matter)
+    
+    method_omega : str, optional
+        The method used to estimate the omega parameter. The default is 'He'.
+        Possible values are:
+        - 'He': use the Black Litterman method.
+        - 'Idzorek': use the Idzorek method.
+
+    view_confidences : List, optional
+        The confidence of the views. The default is None.
+        If None, the confidence is set to 0.25.
+        If the length of the list is not equal to the number of views,
+        the confidence is set to 0.25.
+        	        
 
     Returns
     -------
@@ -1189,8 +1211,46 @@ def black_litterman(
     S = np.array(covar_matrix(X, method=method_cov, **dict_cov), ndmin=2)
     P = np.array(P, ndmin=2)
     Q = np.array(Q, ndmin=2)
-    tau = 1 / X.shape[0]
-    Omega = np.array(np.diag(np.diag(P @ (tau * S) @ P.T)), ndmin=2)
+
+    # Tau methods
+    if isinstance(method_tau, (int, float)):
+        tau = method_tau
+    elif method_tau == "He":
+        tau = 1 / X.shape[0] # 1 / n_samples
+    elif method_tau == "Watlers":
+        tau = 1/ (X.shape[0] - P.shape[0]) 
+    # elif method_tau == "Allaj":
+    #     ...
+    elif method_tau == "Idzorek":
+        tau = 0.05
+
+    # Omega methods
+    if method_omega == "He":
+        Omega = np.array(np.diag(np.diag(P @ (tau * S) @ P.T)), ndmin=2)
+    elif method_omega == "Idzorek":
+        K = np.shape(P)[0]
+        if view_confidences is None:
+                view_confidences = 0.25 * np.ones((K, 1))
+        w_mkt = np.linalg.inv(delta * S) @ mu
+        
+        Omega = np.zeros((K,K))
+        for i in range(K):
+            p = P[i, :]
+            q = Q[i] - ((p.sum() != 0) * rf)
+            c = view_confidences[i]
+            D = (tau / delta) * (q - p @ mu.T) * p / (p @ S @ p.T)
+            tilt = D * ((p != 0) * c)
+            
+            w_target = w_mkt + tilt
+
+            def w(o):
+                return np.linalg.inv(np.identity(P.shape[2])/tau + np.outer(p, p) @ S / o) @ (w_mkt / tau + p * q / o / delta)
+        
+            def sum_squared_difference(o):
+                diff = w_target - w(o)
+                return np.dot(diff, diff)
+            
+            Omega[i,i] = min(np.linspace(0,1,1000)[1:], key=sum_squared_difference)
 
     if eq == True:
         PI = delta * (S @ w)

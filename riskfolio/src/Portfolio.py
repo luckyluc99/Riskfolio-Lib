@@ -1034,6 +1034,9 @@ class Portfolio(object):
         method_cov="hist",
         dict_mu={},
         dict_cov={},
+        method_tau="He",
+        method_omega="He",
+        view_confidences=None,
     ):
         r"""
         Calculate the inputs that will be used by the optimization method when
@@ -1086,6 +1089,10 @@ class Portfolio(object):
             Other variables related to the mean vector estimation method.
         dict_cov : dict
             Other variables related to the covariance estimation method.
+        method_tau : str, optional
+            The method used to estimate the tau parameter.
+            The default is 'He'. Possible values are:
+            ...
 
         See Also
         --------
@@ -1094,7 +1101,7 @@ class Portfolio(object):
         """
         X = self.returns
         if w is None:
-            w = np.array(self.benchweights, ndmin=2)
+            w = np.array(self.benchweights, ndmin=2) # sets to 1/n
 
         if delta is None:
             a = np.array(self.mu, ndmin=2) @ np.array(w, ndmin=2)
@@ -1117,6 +1124,8 @@ class Portfolio(object):
             method_cov=method_cov,
             dict_mu=dict_mu,
             dict_cov=dict_cov,
+            method_tau=method_tau,
+            method_omega=method_omega,
         )
         self.mu_bl = mu
         self.cov_bl = cov

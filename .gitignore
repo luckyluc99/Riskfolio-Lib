@@ -16,3 +16,4 @@ __pycache__/
 /docs/.DS_Store
 /vscode
 riskfolio/version.py
+.venv
