@@ -1199,12 +1199,14 @@ def black_litterman(
         - 'He': use the Black Litterman method. (1/n_samples)
         - 'Walters': use the Walters method. (1/(n_samples - n_views))
         - 'Idzorek': use the Idzorek method. (0.05)
+        - 'Allaj': possibly programmed in the future.
     method_omega : str, optional
         The method used to estimate the omega parameter. The default is 'He'.
         Possible values are:
         - 'He': use the Black Litterman method.
         - 'Idzorek': use the Idzorek method.
-        
+        - 'Meucci': use the Meucci method.
+    view_confidences : List, optional
 
     Returns
     -------
@@ -1259,8 +1261,12 @@ def black_litterman(
         K = P.shape[0]
         if view_confidences is None:
                 view_confidences = 0.25 * np.ones((K, 1)) # Default confidence of 25%
-
         Omega = idzorek_method(view_confidences, S, Q, P, tau)
+    elif method_omega == "Meucci":
+        c = 1/2 # Confidence level (as much as the market)
+        Omega = np.array( (1 / c - 1 ) * np.diag(np.diag(P @ S @ P.T)), ndmin=2)
+    else:
+        Omega = np.array(np.diag(np.diag(P @ (tau * S) @ P.T)), ndmin=2)
 
     if eq == True:
         PI = delta * (S @ w)
