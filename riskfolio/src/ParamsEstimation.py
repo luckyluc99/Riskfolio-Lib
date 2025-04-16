@@ -1058,6 +1058,39 @@ def risk_factors(
     return mu, cov, returns, B
 
 
+
+def idzorek_method(view_confidences, cov_matrix, Q, P, tau):
+    """
+    Use Idzorek's method to create the uncertainty matrix given user-specified
+    percentage confidences. We use the closed-form solution described by
+    Jay Walters in The Black-Litterman Model in Detail (2014).
+
+    :param view_confidences: Kx1 vector of percentage view confidences (between 0 and 1),
+                            required to compute omega via Idzorek's method.
+    :type view_confidences: np.ndarray, pd.Series, list,, optional
+    :return: KxK diagonal uncertainty matrix
+    :rtype: np.ndarray
+    """
+    view_omegas = []
+    for view_idx in range(len(Q)):
+        conf = view_confidences[view_idx]
+
+        if conf < 0 or conf > 1:
+            raise ValueError("View confidences must be between 0 and 1")
+
+        # Special handler to avoid dividing by zero.
+        # If zero conf, return very big number as uncertainty
+        if conf == 0:
+            view_omegas.append(1e6)
+            continue
+
+        P_view = P[view_idx].reshape(1, -1)
+        alpha = (1 - conf) / conf  # formula (44)
+        omega = tau * alpha * P_view @ cov_matrix @ P_view.T  # formula (41)
+        view_omegas.append(omega.item())
+
+    return np.diag(view_omegas)
+
 def black_litterman(
     X,
     w,
@@ -1164,21 +1197,14 @@ def black_litterman(
         The method used to estimate the tau parameter. The default is 'BL'.
         Possible values are:
         - 'He': use the Black Litterman method. (1/n_samples)
-        - 'Watlers': use the Watlers method. (1/(n_samples - n_views))
-        - 'Idzorek': use the Idzorek method. (0.05) (shouldn't matter)
-    
+        - 'Walters': use the Walters method. (1/(n_samples - n_views))
+        - 'Idzorek': use the Idzorek method. (0.05)
     method_omega : str, optional
         The method used to estimate the omega parameter. The default is 'He'.
         Possible values are:
         - 'He': use the Black Litterman method.
         - 'Idzorek': use the Idzorek method.
-
-    view_confidences : List, optional
-        The confidence of the views. The default is None.
-        If None, the confidence is set to 0.25.
-        If the length of the list is not equal to the number of views,
-        the confidence is set to 0.25.
-        	        
+        
 
     Returns
     -------
@@ -1217,40 +1243,24 @@ def black_litterman(
         tau = method_tau
     elif method_tau == "He":
         tau = 1 / X.shape[0] # 1 / n_samples
-    elif method_tau == "Watlers":
-        tau = 1/ (X.shape[0] - P.shape[0]) 
+    elif method_tau == "Walters":
+        tau = 1/ (X.shape[0] - P.shape[0])  # best
     # elif method_tau == "Allaj":
     #     ...
     elif method_tau == "Idzorek":
+        tau = 0.05
+    else:
         tau = 0.05
 
     # Omega methods
     if method_omega == "He":
         Omega = np.array(np.diag(np.diag(P @ (tau * S) @ P.T)), ndmin=2)
     elif method_omega == "Idzorek":
-        K = np.shape(P)[0]
+        K = P.shape[0]
         if view_confidences is None:
-                view_confidences = 0.25 * np.ones((K, 1))
-        w_mkt = np.linalg.inv(delta * S) @ mu
-        
-        Omega = np.zeros((K,K))
-        for i in range(K):
-            p = P[i, :]
-            q = Q[i] - ((p.sum() != 0) * rf)
-            c = view_confidences[i]
-            D = (tau / delta) * (q - p @ mu.T) * p / (p @ S @ p.T)
-            tilt = D * ((p != 0) * c)
-            
-            w_target = w_mkt + tilt
+                view_confidences = 0.25 * np.ones((K, 1)) # Default confidence of 25%
 
-            def w(o):
-                return np.linalg.inv(np.identity(P.shape[2])/tau + np.outer(p, p) @ S / o) @ (w_mkt / tau + p * q / o / delta)
-        
-            def sum_squared_difference(o):
-                diff = w_target - w(o)
-                return np.dot(diff, diff)
-            
-            Omega[i,i] = min(np.linspace(0,1,1000)[1:], key=sum_squared_difference)
+        Omega = idzorek_method(view_confidences, S, Q, P, tau)
 
     if eq == True:
         PI = delta * (S @ w)

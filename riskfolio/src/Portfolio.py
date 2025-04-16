@@ -1092,7 +1092,8 @@ class Portfolio(object):
         method_tau : str, optional
             The method used to estimate the tau parameter.
             The default is 'He'. Possible values are:
-            ...
+            - 'He': He method.
+            
 
         See Also
         --------
@@ -1126,6 +1127,7 @@ class Portfolio(object):
             dict_cov=dict_cov,
             method_tau=method_tau,
             method_omega=method_omega,
+            view_confidences=view_confidences,
         )
         self.mu_bl = mu
         self.cov_bl = cov
